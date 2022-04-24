@@ -1,4 +1,4 @@
-//! Split a string into individual sql statements.
+//! Split a string into individual sqlite sql statements.
 //!
 //! This package is a library that contains some routines for managing
 //! multiple sql statements in a string.  `sqlite` silently ignores
@@ -6,30 +6,85 @@
 //! `rusqlite` also [has this
 //! flaw](https://github.com/rusqlite/rusqlite/issues/1147).
 //!
-//! Although this package aims at sqlite, it would not be difficult to
-//! extend it to other sql dialects.
-//!
-//!
 //! ```rust
 //! use sql_split::split;
+//! use rusqlite::{Connection, Result};
 //!
-//! split("CREATE TABLE foo ({bar: text});");
+//! let conn = Connection::open_in_memory().expect("Can't open db in memory");
+//! let statements = split("CREATE TABLE foo (bar: text); CREATE TABLE meep (moop: text)");
+//! for s in statements {
+//!     conn.execute(&s, []);
+//! }
 //! ```
 #![warn(missing_docs)]
 
-
-
 /// Split a string into individual sql statements.
+///
+/// This func returns a Vec<String> containing individual sql
+/// statements in SQL.
+///
+/// This func will ignore semicolons inside enclosures recognized by
+/// `sqlite` (quote, double-quote, backticks, square braces).  It will
+/// not be thrown off by nested quotes.
+///
+/// This func does not know how to parse sql, and will not verify that
+/// your sql is well-formed.  If you feed it invalid sql, results are
+/// undefined.  For example, it will not treat handle quotes escaped
+/// with a backslash as a special case, since sqlite does not
+/// recognize backslash escaped quotes.
 ///
 /// ```rust
 /// use sql_split::split;
 ///
+/// let statements = split("CREATE TABLE foo (bar: text); CREATE TABLE meep (moop: text)");
 /// ```
 pub fn split(sql: &str) -> Vec<String> {
-    vec![]
+    let mut ret: Vec<String> = vec![];
+    let mut statement: String = "".to_string();
+    let mut encloser: Option<char> = None;
+    for ch in sql.chars() {
+	statement.push(ch);
+	match encloser {
+	    Some(e) => {
+		if ch == ']' || e == ch {
+		    encloser = None;
+		}
+		// statement.push(ch);
+	    }
+	    None => match ch {
+		';' => {
+		    ret.push(statement.trim().to_string());
+		    statement = "".to_string();
+		},
+		'[' | '"' | '\'' | '`' => {
+		    encloser = Some(ch);
+		    // statement.push(ch);
+		},
+		_ => {}, //statement.push(ch),
+	    }
+	}
+    }
+
+    // Capture anything left over, in case sql doesn't end in semicolon
+    if statement.len() != 0 {
+	ret.push(statement.trim().to_string())
+    }
+
+    // Handle trailing comments
+    if ret.len() >= 2 {
+	let l = ret.last().unwrap();
+	if l.starts_with("--") || l.starts_with("/*") {
+	    let comment: String = ret.pop().unwrap();
+	    let last = ret.pop().unwrap();
+	    ret.push(format!("{} {}", last, comment));
+	}
+    }
+    ret
 }
 
 /// Count statements in a string of sqlite sql
+///
+/// This func returns the number of sql statements in an &str.
 ///
 /// ```rust
 /// use sql_split::count;
@@ -45,11 +100,10 @@ mod tests {
 
     #[test]
     fn test_split() {
-	assert_eq!(split(""),vec![""]);
-	assert_eq!(split("CREATE TABLE foo (bar: text)"), vec!["CREATE TABLE foo (bar: text)"]); // trailing semi-colon is optional
-	assert_eq!(split("CREATE TABLE foo (bar: text);"), vec!["CREATE TABLE foo (bar: text);"]);
-	assert_eq!(split("CREATE TABLE foo (bar: text); INSERT into foo (bar) VALUES ('hi')"), vec!["CREATE TABLE foo (bar: text)", " INSERT into foo (bar) VALUES ('hi')"]);
-	assert_eq!(split("invalid sql; but we don't care because we don't really parse it;"), vec!["invalid sql", " but we don't care because we don't really parse it;"]);
+	assert_eq!(split("CREATE TABLE foo (bar: text)"), vec!["CREATE TABLE foo (bar: text)"], "Trailing semi-colon is optional");
+	assert_eq!(split("CREATE TABLE foo (bar: text);"), vec!["CREATE TABLE foo (bar: text);"], "We preserve the semi-colons");
+	assert_eq!(split("CREATE TABLE foo (bar: text); INSERT into foo (bar) VALUES ('hi')"), vec!["CREATE TABLE foo (bar: text);", "INSERT into foo (bar) VALUES ('hi')"]);
+	assert_eq!(split("invalid sql; but we don't care because we don't really parse it;"), vec!["invalid sql;", "but we don't care because we don't really parse it;"]);
 	assert_eq!(split("INSERT INTO foo (bar) VALUES ('semicolon in string: ;')"), vec!["INSERT INTO foo (bar) VALUES ('semicolon in string: ;')"]);
 	assert_eq!(split("INSERT INTO foo (bar) VALUES (\"semicolon in double-quoted string: ;\")"), vec!["INSERT INTO foo (bar) VALUES (\"semicolon in double-quoted string: ;\")"]);
 	assert_eq!(split("INSERT INTO foo (bar) VALUES (`semicolon in backtick string: ;`)"), vec!["INSERT INTO foo (bar) VALUES (`semicolon in backtick string: ;`)"]);
@@ -57,7 +111,7 @@ mod tests {
 	assert_eq!(split("INSERT INTO foo (bar) VALUES (\"interior quote and semicolon in double-quoted string: ;\"\"\")"), vec!["INSERT INTO foo (bar) VALUES (\"interior quote and semicolon in double-quoted string: ;\"\"\")"]);
 	assert_eq!(split("INSERT INTO foo (bar) VALUES (`interior quote and semicolon in backtick string: ;```)"), vec!["INSERT INTO foo (bar) VALUES (`interior quote and semicolon in backtick string: ;```)"]);
 	assert_eq!(split("INSERT INTO foo (bar) VALUES (`semicolon after interior quote ``;`)"), vec!["INSERT INTO foo (bar) VALUES (`semicolon after interior quote ``;`)"]);
-	assert_eq!(split("CREATE TABLE [foo;bar] (bar: text); INSERT into foo (bar) VALUES ('hi')"), vec!["CREATE TABLE [foo;bar] (bar: text)", " INSERT into foo (bar) VALUES ('hi')"]); // brackets are ok for identifiers in sqlite
+	assert_eq!(split("CREATE TABLE [foo;bar] (bar: text); INSERT into foo (bar) VALUES ('hi')"), vec!["CREATE TABLE [foo;bar] (bar: text);", "INSERT into foo (bar) VALUES ('hi')"]); // brackets are ok for identifiers in sqlite
 	assert_eq!(split("SELECT * FROM foo; -- trailing comments are fine"), vec!["SELECT * FROM foo; -- trailing comments are fine"]);
 	assert_eq!(split("SELECT * FROM foo; /* trailing comments are fine */"), vec!["SELECT * FROM foo; /* trailing comments are fine */"]);
     }
@@ -65,23 +119,10 @@ mod tests {
 
     #[test]
     fn test_count() {
-	assert_eq!(count(""),0);
-	assert_eq!(count("CREATE TABLE foo (bar: text)"),1);
-	assert_eq!(count("CREATE TABLE foo (bar: text);"),1); // trailing semi-colon is optional
-	assert_eq!(count("CREATE TABLE foo (bar: text); INSERT into foo (bar) VALUES ('hi')"),2);
-	assert_eq!(count("invalid sql; but we don't care because we don't really parse it;"),2);
-	assert_eq!(count("INSERT INTO foo (bar) VALUES ('semicolon in string: ;')"), 1);
-	assert_eq!(count("INSERT INTO foo (bar) VALUES (\"semicolon in double-quoted string: ;\")"),1);
-	assert_eq!(count("INSERT INTO foo (bar) VALUES (`semicolon in backtick string: ;`)"),1);
-	assert_eq!(count("INSERT INTO foo (bar) VALUES ('interior quote and semicolon in string: ;''')"), 1);
-	assert_eq!(count("INSERT INTO foo (bar) VALUES (\"interior quote and semicolon in double-quoted string: ;\"\"\")"),1);
-	assert_eq!(count("INSERT INTO foo (bar) VALUES (`interior quote and semicolon in backtick string: ;```)"),1);
-	assert_eq!(count("INSERT INTO foo (bar) VALUES (`semicolon after interior quote ``;`)"),1);
-	assert_eq!(count("CREATE TABLE [foo;bar] (bar: text); INSERT into foo (bar) VALUES ('hi')"),2); // brackets are ok for identifiers in sqlite
-	assert_eq!(count("SELECT * FROM foo; -- trailing comments are fine"), 1);
-	assert_eq!(count("SELECT * FROM foo; /* trailing comments are fine */"), 1);
+	assert_eq!(count(""),0, "Failed at empty sql");
+	assert_eq!(count("CREATE TABLE foo (bar: text)"),1, "Failed at one basic statement");
+	assert_eq!(count("CREATE TABLE foo (bar: text); INSERT into foo (bar) VALUES ('hi')"),2, "Failed at two basic statements");
+	assert_eq!(count("SELECT * FROM foo; -- trailing comments are fine"), 1, "Failed at -- comment");
+	assert_eq!(count("SELECT * FROM foo; /* trailing comments are fine */"), 1, "Failed at /*comment*/");
     }
-
-
-
 }
