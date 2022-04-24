@@ -78,7 +78,7 @@ pub fn split(sql: &str) -> Vec<String> {
         }
     }
 
-    ret
+    ret.into_iter().filter(|w| w != "").collect::<Vec<String>>()
 }
 
 /// Count statements in a string of sqlite sql
