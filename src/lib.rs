@@ -198,12 +198,12 @@ mod tests {
     fn test_count() {
         assert_eq!(count(""), 0, "Failed at empty sql");
         assert_eq!(
-            count("CREATE TABLE foo (bar: text)"),
+            count("CREATE TABLE foo (bar text)"),
             1,
             "Failed at one basic statement"
         );
         assert_eq!(
-            count("CREATE TABLE foo (bar: text); INSERT into foo (bar) VALUES ('hi')"),
+            count("CREATE TABLE foo (bar text); INSERT into foo (bar) VALUES ('hi')"),
             2,
             "Failed at two basic statements"
         );
