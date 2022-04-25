@@ -264,6 +264,10 @@ mod tests {
             split("SELECT * FROM foo; /* trailing comments are fine */"),
             vec!["SELECT * FROM foo; /* trailing comments are fine */"]
         );
+	assert!(split("-- Start with a comment;SELECT * FROM foo;").is_empty());
+	assert_eq!(split("-- Start with a comment\nSELECT * FROM foo;"),
+		   vec!["SELECT * FROM foo;"],
+		   "-- comment didn't know where to stop");
     }
 
     #[test]
