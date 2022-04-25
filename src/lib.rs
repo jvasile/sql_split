@@ -151,7 +151,7 @@ pub fn split_n(sql: &str, n: Option<usize>) -> Vec<String> {
     // Handle trailing comments
     if ret.len() >= 2 {
         let l = ret.last().unwrap();
-        if l.starts_with("--") || l.starts_with("/*") {
+        if l.starts_with("/*") {
             let comment: String = ret.pop().unwrap();
             let last = ret.pop().unwrap();
             ret.push(format!("{} {}", last, comment));
