@@ -107,7 +107,6 @@ pub fn split_n(sql: &str, n: Option<usize>) -> Vec<String> {
                 }
                 '-' => {
                     if last_ch == '-' {
-                        eprintln!("{}", statement);
                         in_line_comment = true;
 
                         // unpush the --
@@ -131,9 +130,7 @@ pub fn split_n(sql: &str, n: Option<usize>) -> Vec<String> {
                         statement = "".to_owned();
                     }
                 }
-                '[' | '"' | '\'' | '`' => {
-                    encloser = Some(ch);
-                }
+                '[' | '"' | '\'' | '`' => encloser = Some(ch),
                 _ => {}
             },
         }
