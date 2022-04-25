@@ -290,6 +290,8 @@ mod tests {
 		  vec!["CREATE TABLE foo (bar text)"]);
 	assert_eq!(split_n("CREATE TABLE foo (bar text) -- table creation", Some(1)),
 		  vec!["CREATE TABLE foo (bar text)"]);
+	assert_eq!(split_n("Try more than 1;CREATE TABLE foo (bar text) -- table creation", Some(2)),
+		  vec!["Try more than 1;", "CREATE TABLE foo (bar text)"]);
     }
 
     #[test]
