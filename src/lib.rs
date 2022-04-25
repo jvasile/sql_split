@@ -16,6 +16,14 @@
 //!     conn.execute(&s, []).expect("Can't write to the db");
 //! }
 //! ```
+//!
+//! Flaws and TODO:
+//!
+//!  * Some comments aren't handled well yet.  A "-- comment" can
+//!  invalidate the following statement.
+//!
+//! * Block comments are a work in progress. A "/* comment */" will
+//! throw off the count in split_n, eat a follower statement, etc.
 #![warn(missing_docs)]
 
 /// Split a string into individual sql statements.
@@ -34,6 +42,14 @@
 /// undefined.  For example, it will not treat handle quotes escaped
 /// with a backslash as a special case, since sqlite does not
 /// recognize backslash escaped quotes.
+///
+/// Limitations:
+///
+/// The output from `split` is meant for the sqlite engine, not
+/// humans.  It seeks to preserve semantics, not form.  This func will
+/// strip some comments because dropping comments simplifies parsing
+/// and also it is sometimes hard to know which statement a comment
+/// should attach to.
 ///
 /// ```rust
 /// use sql_split::split;
@@ -74,13 +90,15 @@ pub fn split_n(sql: &str, n:Option<usize>) -> Vec<String> {
     let mut last_ch = ' ';
     let mut in_line_comment: bool = false;
     for ch in sql.chars() {
-        statement.push(ch);
+	if ! in_line_comment {
+            statement.push(ch);
+	}
         match encloser {
             Some(e) => {
                 if ch == ']' || e == ch {
                     encloser = None;
                 }
-            }
+            },
             None => match ch {
 		'\n' => {
 		    if in_line_comment {
@@ -88,14 +106,13 @@ pub fn split_n(sql: &str, n:Option<usize>) -> Vec<String> {
 		    }
 		},
 		'-' => {
-		    if statement.trim().len() == 2 && last_ch == '-' {
+		    if last_ch == '-' {
+			eprintln!("{}", statement);
 			in_line_comment = true;
 
-			// Unpush last statement if there is one, and
-			// attach this comment to it.
-			if let Some(last) = ret.pop() {
-			    statement = last + &statement;
-			}
+			// unpush the --
+			statement.pop().unwrap();
+			statement.pop().unwrap();
 		    }
 		},
                 ';' => {
@@ -227,16 +244,20 @@ mod tests {
     fn test_split_comments() {
         assert_eq!(
             split("SELECT * FROM foo; -- trailing comments are fine"),
-            vec!["SELECT * FROM foo; -- trailing comments are fine"]
+            vec!["SELECT * FROM foo;"]
         );
-         assert_eq!(
+        assert_eq!(
             split("SELECT * FROM foo -- trailing comments are fine"),
-             vec!["SELECT * FROM foo -- trailing comments are fine"],
+             vec!["SELECT * FROM foo"],
 	     "Fail trailing -- comment w/ no semicolon"
         );
         assert_eq!(
+            split("SELECT * FROM foo; -- trailing comments are fine\n Another statement"),
+            vec!["SELECT * FROM foo;", "Another statement", ]
+        );
+        assert_eq!(
             split("SELECT * FROM foo; -- trailing ; comments ; are ; fine"),
-            vec!["SELECT * FROM foo; -- trailing ; comments ; are ; fine"],
+            vec!["SELECT * FROM foo;"],
 	    "Fail trailing -- comment w/ semicolon"
         );
         assert_eq!(
@@ -264,7 +285,7 @@ mod tests {
 	assert_eq!(split_n("CREATE TABLE foo (bar text)", Some(1)),
 		  vec!["CREATE TABLE foo (bar text)"]);
 	assert_eq!(split_n("CREATE TABLE foo (bar text) -- table creation", Some(1)),
-		  vec!["CREATE TABLE foo (bar text) -- table creation"]);
+		  vec!["CREATE TABLE foo (bar text)"]);
     }
 
     #[test]
