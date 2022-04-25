@@ -23,9 +23,11 @@
 /// This func returns a Vec<String> containing individual sql
 /// statements in SQL.
 ///
-/// This func will ignore semicolons inside enclosures recognized by
-/// `sqlite` (quote, double-quote, backticks, square braces).  It will
-/// not be thrown off by nested quotes.
+/// This func is not smart, but it's not completely dumb either.  It
+/// will ignore semicolons inside enclosures recognized by `sqlite`
+/// (quote, double-quote, backticks, square braces).  It will not be
+/// thrown off by nested quotes.  It will remove empty statements if
+/// it finds any.
 ///
 /// This func does not know how to parse sql, and will not verify that
 /// your sql is well-formed.  If you feed it invalid sql, results are
@@ -64,7 +66,11 @@ pub fn split(sql: &str) -> Vec<String> {
             }
             None => match ch {
                 ';' => {
-                    ret.push(statement.trim().to_string());
+                    statement = statement.trim().to_owned();
+                    if statement != ";" {
+                        // ignore empty statements
+                        ret.push(statement);
+                    }
                     statement = "".to_string();
                 }
                 '[' | '"' | '\'' | '`' => {
@@ -76,7 +82,7 @@ pub fn split(sql: &str) -> Vec<String> {
     }
 
     // Capture anything left over, in case sql doesn't end in semicolon
-    if statement.len() != 0 {
+    if statement.trim().len() != 0 {
         ret.push(statement.trim().to_string())
     }
 
@@ -90,7 +96,7 @@ pub fn split(sql: &str) -> Vec<String> {
         }
     }
 
-    ret.into_iter().filter(|w| w != "").collect::<Vec<String>>()
+    ret
 }
 
 /// Count statements in a string of sqlite sql
@@ -174,6 +180,17 @@ mod tests {
         assert_eq!(
             split("SELECT * FROM foo; /* trailing comments are fine */"),
             vec!["SELECT * FROM foo; /* trailing comments are fine */"]
+        );
+
+        assert_eq!(
+            split("hi;internal;;;;;bye;"),
+            vec!["hi;", "internal;", "bye;"],
+            "Failing at removing empty statements"
+        );
+
+        assert_eq!(
+            split("trailing newlines;\n\n\n\n\n\n\n\n;\n\n\n\n\n"),
+            vec!["trailing newlines;"]
         );
     }
 
