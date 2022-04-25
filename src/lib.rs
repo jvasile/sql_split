@@ -53,9 +53,26 @@
 /// );
 /// ```
 pub fn split(sql: &str) -> Vec<String> {
+    split_n(sql, None)
+}
+
+/// Split first N statements from a multi-statement sql string into a Vec<String>
+///
+/// SQL is an &str containing some sql statements
+/// N is an Option<usize>.  If present, return up to N statements.
+/// ```rust
+/// use sql_split::split_n;
+/// use rusqlite::{Connection, Result};
+///
+/// let sql = "CREATE TABLE foo (bar text); CREATE TABLE meep (moop text)";
+/// assert_eq!(split_n(sql, Some(1)), vec!["CREATE TABLE foo (bar text);"]);
+/// ```
+pub fn split_n(sql: &str, n:Option<usize>) -> Vec<String> {
     let mut ret: Vec<String> = vec![];
-    let mut statement: String = "".to_string();
+    let mut statement: String = "".to_owned();
     let mut encloser: Option<char> = None;
+    let mut last_ch = ' ';
+    let mut in_line_comment: bool = false;
     for ch in sql.chars() {
         statement.push(ch);
         match encloser {
@@ -65,13 +82,37 @@ pub fn split(sql: &str) -> Vec<String> {
                 }
             }
             None => match ch {
+		'\n' => {
+		    if in_line_comment {
+			in_line_comment = false;
+		    }
+		},
+		'-' => {
+		    if statement.trim().len() == 2 && last_ch == '-' {
+			in_line_comment = true;
+
+			// Unpush last statement if there is one, and
+			// attach this comment to it.
+			if let Some(last) = ret.pop() {
+			    statement = last + &statement;
+			}
+		    }
+		},
                 ';' => {
-                    statement = statement.trim().to_owned();
-                    if statement != ";" {
-                        // ignore empty statements
-                        ret.push(statement);
-                    }
-                    statement = "".to_string();
+		    if ! in_line_comment {
+			statement = statement.trim().to_owned();
+
+			// Push statement if not empty
+			if statement != ";" {
+			    ret.push(statement.to_owned());
+			    if let Some(n) = n {
+				if ret.len() >= n {
+				    break;
+				}
+			    }
+			}
+			statement = "".to_owned();
+		    }
                 }
                 '[' | '"' | '\'' | '`' => {
                     encloser = Some(ch);
@@ -79,9 +120,13 @@ pub fn split(sql: &str) -> Vec<String> {
                 _ => {}
             },
         }
+	last_ch = ch;
     }
 
-    // Capture anything left over, in case sql doesn't end in semicolon
+    // Capture anything left over, in case sql doesn't end in
+    // semicolon.  Note that if we `break` in the above loop,
+    // statement might not be empty, and all the sql left will get
+    // tacked on to ret.
     if statement.trim().len() != 0 {
         ret.push(statement.trim().to_string())
     }
@@ -96,7 +141,10 @@ pub fn split(sql: &str) -> Vec<String> {
         }
     }
 
-    ret
+    match n {
+	Some(n) => ret[0..n].to_vec(),
+	None => ret
+    }
 }
 
 /// Count statements in a string of sqlite sql
@@ -173,15 +221,32 @@ mod tests {
                 "INSERT into foo (bar) VALUES ('hi')"
             ]
         ); // brackets are ok for identifiers in sqlite
+    }
+
+    #[test]
+    fn test_split_comments() {
         assert_eq!(
             split("SELECT * FROM foo; -- trailing comments are fine"),
             vec!["SELECT * FROM foo; -- trailing comments are fine"]
+        );
+         assert_eq!(
+            split("SELECT * FROM foo -- trailing comments are fine"),
+             vec!["SELECT * FROM foo -- trailing comments are fine"],
+	     "Fail trailing -- comment w/ no semicolon"
+        );
+        assert_eq!(
+            split("SELECT * FROM foo; -- trailing ; comments ; are ; fine"),
+            vec!["SELECT * FROM foo; -- trailing ; comments ; are ; fine"],
+	    "Fail trailing -- comment w/ semicolon"
         );
         assert_eq!(
             split("SELECT * FROM foo; /* trailing comments are fine */"),
             vec!["SELECT * FROM foo; /* trailing comments are fine */"]
         );
+    }
 
+    #[test]
+    fn split_empty_statements() {
         assert_eq!(
             split("hi;internal;;;;;bye;"),
             vec!["hi;", "internal;", "bye;"],
@@ -192,6 +257,14 @@ mod tests {
             split("trailing newlines;\n\n\n\n\n\n\n\n;\n\n\n\n\n"),
             vec!["trailing newlines;"]
         );
+    }
+
+    #[test]
+    fn test_split_n() {
+	assert_eq!(split_n("CREATE TABLE foo (bar text)", Some(1)),
+		  vec!["CREATE TABLE foo (bar text)"]);
+	assert_eq!(split_n("CREATE TABLE foo (bar text) -- table creation", Some(1)),
+		  vec!["CREATE TABLE foo (bar text) -- table creation"]);
     }
 
     #[test]
