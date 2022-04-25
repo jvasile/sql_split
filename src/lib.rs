@@ -83,53 +83,53 @@ pub fn split(sql: &str) -> Vec<String> {
 /// let sql = "CREATE TABLE foo (bar text); CREATE TABLE meep (moop text)";
 /// assert_eq!(split_n(sql, Some(1)), vec!["CREATE TABLE foo (bar text);"]);
 /// ```
-pub fn split_n(sql: &str, n:Option<usize>) -> Vec<String> {
+pub fn split_n(sql: &str, n: Option<usize>) -> Vec<String> {
     let mut ret: Vec<String> = vec![];
     let mut statement: String = "".to_owned();
     let mut encloser: Option<char> = None;
     let mut last_ch = ' ';
     let mut in_line_comment: bool = false;
     for ch in sql.chars() {
-	if ! in_line_comment {
+        if !in_line_comment {
             statement.push(ch);
-	}
+        }
         match encloser {
             Some(e) => {
                 if ch == ']' || e == ch {
                     encloser = None;
                 }
-            },
+            }
             None => match ch {
-		'\n' => {
-		    if in_line_comment {
-			in_line_comment = false;
-		    }
-		},
-		'-' => {
-		    if last_ch == '-' {
-			eprintln!("{}", statement);
-			in_line_comment = true;
+                '\n' => {
+                    if in_line_comment {
+                        in_line_comment = false;
+                    }
+                }
+                '-' => {
+                    if last_ch == '-' {
+                        eprintln!("{}", statement);
+                        in_line_comment = true;
 
-			// unpush the --
-			statement.pop().unwrap();
-			statement.pop().unwrap();
-		    }
-		},
+                        // unpush the --
+                        statement.pop().unwrap();
+                        statement.pop().unwrap();
+                    }
+                }
                 ';' => {
-		    if ! in_line_comment {
-			statement = statement.trim().to_owned();
+                    if !in_line_comment {
+                        statement = statement.trim().to_owned();
 
-			// Push statement if not empty
-			if statement != ";" {
-			    ret.push(statement.to_owned());
-			    if let Some(n) = n {
-				if ret.len() >= n {
-				    break;
-				}
-			    }
-			}
-			statement = "".to_owned();
-		    }
+                        // Push statement if not empty
+                        if statement != ";" {
+                            ret.push(statement.to_owned());
+                            if let Some(n) = n {
+                                if ret.len() >= n {
+                                    break;
+                                }
+                            }
+                        }
+                        statement = "".to_owned();
+                    }
                 }
                 '[' | '"' | '\'' | '`' => {
                     encloser = Some(ch);
@@ -137,7 +137,7 @@ pub fn split_n(sql: &str, n:Option<usize>) -> Vec<String> {
                 _ => {}
             },
         }
-	last_ch = ch;
+        last_ch = ch;
     }
 
     // Capture anything left over, in case sql doesn't end in
@@ -159,8 +159,8 @@ pub fn split_n(sql: &str, n:Option<usize>) -> Vec<String> {
     }
 
     match n {
-	Some(n) => ret[0..n].to_vec(),
-	None => ret
+        Some(n) => ret[0..n].to_vec(),
+        None => ret,
     }
 }
 
@@ -248,26 +248,28 @@ mod tests {
         );
         assert_eq!(
             split("SELECT * FROM foo -- trailing comments are fine"),
-             vec!["SELECT * FROM foo"],
-	     "Fail trailing -- comment w/ no semicolon"
+            vec!["SELECT * FROM foo"],
+            "Fail trailing -- comment w/ no semicolon"
         );
         assert_eq!(
             split("SELECT * FROM foo; -- trailing comments are fine\n Another statement"),
-            vec!["SELECT * FROM foo;", "Another statement", ]
+            vec!["SELECT * FROM foo;", "Another statement",]
         );
         assert_eq!(
             split("SELECT * FROM foo; -- trailing ; comments ; are ; fine"),
             vec!["SELECT * FROM foo;"],
-	    "Fail trailing -- comment w/ semicolon"
+            "Fail trailing -- comment w/ semicolon"
         );
         assert_eq!(
             split("SELECT * FROM foo; /* trailing comments are fine */"),
             vec!["SELECT * FROM foo; /* trailing comments are fine */"]
         );
-	assert!(split("-- Start with a comment;SELECT * FROM foo;").is_empty());
-	assert_eq!(split("-- Start with a comment\nSELECT * FROM foo;"),
-		   vec!["SELECT * FROM foo;"],
-		   "-- comment didn't know where to stop");
+        assert!(split("-- Start with a comment;SELECT * FROM foo;").is_empty());
+        assert_eq!(
+            split("-- Start with a comment\nSELECT * FROM foo;"),
+            vec!["SELECT * FROM foo;"],
+            "-- comment didn't know where to stop"
+        );
     }
 
     #[test]
@@ -286,12 +288,21 @@ mod tests {
 
     #[test]
     fn test_split_n() {
-	assert_eq!(split_n("CREATE TABLE foo (bar text)", Some(1)),
-		  vec!["CREATE TABLE foo (bar text)"]);
-	assert_eq!(split_n("CREATE TABLE foo (bar text) -- table creation", Some(1)),
-		  vec!["CREATE TABLE foo (bar text)"]);
-	assert_eq!(split_n("Try more than 1;CREATE TABLE foo (bar text) -- table creation", Some(2)),
-		  vec!["Try more than 1;", "CREATE TABLE foo (bar text)"]);
+        assert_eq!(
+            split_n("CREATE TABLE foo (bar text)", Some(1)),
+            vec!["CREATE TABLE foo (bar text)"]
+        );
+        assert_eq!(
+            split_n("CREATE TABLE foo (bar text) -- table creation", Some(1)),
+            vec!["CREATE TABLE foo (bar text)"]
+        );
+        assert_eq!(
+            split_n(
+                "Try more than 1;CREATE TABLE foo (bar text) -- table creation",
+                Some(2)
+            ),
+            vec!["Try more than 1;", "CREATE TABLE foo (bar text)"]
+        );
     }
 
     #[test]
