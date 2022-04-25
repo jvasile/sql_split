@@ -13,7 +13,7 @@
 //! let conn = Connection::open_in_memory().expect("Can't open db in memory");
 //! let sql = "CREATE TABLE foo (bar text); CREATE TABLE meep (moop text)";
 //! for s in split(sql) {
-//!     conn.execute(&s, []).expect("Couldn't write to the db");
+//!     conn.execute(&s, []).expect("Can't write to the db");
 //! }
 //! ```
 #![warn(missing_docs)]
@@ -35,8 +35,20 @@
 ///
 /// ```rust
 /// use sql_split::split;
+/// use rusqlite::{Connection, Result};
 ///
-/// let statements = split("CREATE TABLE foo (bar: text); CREATE TABLE meep (moop: text)");
+/// let conn = Connection::open_in_memory().expect("Can't open db in memory");
+/// let sql = "CREATE TABLE foo (bar text); CREATE TABLE meep (moop text);";
+/// for s in split(sql) {
+///     conn.execute(&s, []).expect("Can't write to the db");
+/// }
+///
+/// assert_eq!(split(sql),
+///     vec![
+///         "CREATE TABLE foo (bar text);",
+///         "CREATE TABLE meep (moop text);",
+///     ]
+/// );
 /// ```
 pub fn split(sql: &str) -> Vec<String> {
     let mut ret: Vec<String> = vec![];
@@ -88,6 +100,9 @@ pub fn split(sql: &str) -> Vec<String> {
 /// ```rust
 /// use sql_split::count;
 ///
+/// let sql = "CREATE TABLE foo (bar text); CREATE TABLE meep (moop text)";
+/// assert_eq!(count(sql), 2);
+///
 /// ```
 pub fn count(sql: &str) -> usize {
     split(sql).len()
@@ -100,19 +115,19 @@ mod tests {
     #[test]
     fn test_split() {
         assert_eq!(
-            split("CREATE TABLE foo (bar: text)"),
-            vec!["CREATE TABLE foo (bar: text)"],
+            split("CREATE TABLE foo (bar text)"),
+            vec!["CREATE TABLE foo (bar text)"],
             "Trailing semi-colon is optional"
         );
         assert_eq!(
-            split("CREATE TABLE foo (bar: text);"),
-            vec!["CREATE TABLE foo (bar: text);"],
+            split("CREATE TABLE foo (bar text);"),
+            vec!["CREATE TABLE foo (bar text);"],
             "We preserve the semi-colons"
         );
         assert_eq!(
-            split("CREATE TABLE foo (bar: text); INSERT into foo (bar) VALUES ('hi')"),
+            split("CREATE TABLE foo (bar text); INSERT into foo (bar) VALUES ('hi')"),
             vec![
-                "CREATE TABLE foo (bar: text);",
+                "CREATE TABLE foo (bar text);",
                 "INSERT into foo (bar) VALUES ('hi')"
             ]
         );
