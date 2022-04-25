@@ -16,14 +16,6 @@
 //!     conn.execute(&s, []).expect("Can't write to the db");
 //! }
 //! ```
-//!
-//! Flaws and TODO:
-//!
-//!  * Some comments aren't handled well yet.  A "-- comment" can
-//!  invalidate the following statement.
-//!
-//! * Block comments are a work in progress. A "/* comment */" will
-//! throw off the count in split_n, eat a follower statement, etc.
 #![warn(missing_docs)]
 
 /// Split a string into individual sql statements.
@@ -47,9 +39,8 @@
 ///
 /// The output from `split` is meant for the sqlite engine, not
 /// humans.  It seeks to preserve semantics, not form.  This func will
-/// strip some comments because dropping comments simplifies parsing
-/// and also it is sometimes hard to know which statement a comment
-/// should attach to.
+/// strip comments because doing so simplifies parsing and also it is
+/// sometimes hard to know which statement a comment should attach to.
 ///
 /// ```rust
 /// use sql_split::split;
@@ -89,8 +80,9 @@ pub fn split_n(sql: &str, n: Option<usize>) -> Vec<String> {
     let mut encloser: Option<char> = None;
     let mut last_ch = ' ';
     let mut in_line_comment: bool = false;
+    let mut in_block_comment: bool = false;
     for ch in sql.chars() {
-        if !in_line_comment {
+        if !in_line_comment && !in_block_comment {
             statement.push(ch);
         }
         match encloser {
@@ -100,22 +92,39 @@ pub fn split_n(sql: &str, n: Option<usize>) -> Vec<String> {
                 }
             }
             None => match ch {
+                '*' => {
+                    if !in_line_comment && !in_block_comment {
+                        if last_ch == '/' {
+                            in_block_comment = true;
+                            // unpush the /*
+                            statement.pop().unwrap();
+                            statement.pop().unwrap();
+                        }
+                    }
+                }
+                '/' => {
+                    if in_block_comment && last_ch == '*' {
+                        in_block_comment = false;
+                    }
+                }
                 '\n' => {
                     if in_line_comment {
                         in_line_comment = false;
                     }
                 }
                 '-' => {
-                    if last_ch == '-' {
-                        in_line_comment = true;
+                    if !in_line_comment && !in_block_comment {
+                        if last_ch == '-' {
+                            in_line_comment = true;
 
-                        // unpush the --
-                        statement.pop().unwrap();
-                        statement.pop().unwrap();
+                            // unpush the --
+                            statement.pop().unwrap();
+                            statement.pop().unwrap();
+                        }
                     }
                 }
                 ';' => {
-                    if !in_line_comment {
+                    if !in_line_comment && !in_block_comment {
                         statement = statement.trim().to_owned();
 
                         // Push statement if not empty
@@ -143,16 +152,6 @@ pub fn split_n(sql: &str, n: Option<usize>) -> Vec<String> {
     // tacked on to ret.
     if statement.trim().len() != 0 {
         ret.push(statement.trim().to_string())
-    }
-
-    // Handle trailing comments
-    if ret.len() >= 2 {
-        let l = ret.last().unwrap();
-        if l.starts_with("/*") {
-            let comment: String = ret.pop().unwrap();
-            let last = ret.pop().unwrap();
-            ret.push(format!("{} {}", last, comment));
-        }
     }
 
     match n {
@@ -259,7 +258,11 @@ mod tests {
         );
         assert_eq!(
             split("SELECT * FROM foo; /* trailing comments are fine */"),
-            vec!["SELECT * FROM foo; /* trailing comments are fine */"]
+            vec!["SELECT * FROM foo;"]
+        );
+        assert_eq!(
+            split("SELECT * FROM foo /* multiline\n\ncomments are fine mid-statement */ WHERE blah blah blah"),
+            vec!["SELECT * FROM foo  WHERE blah blah blah"]
         );
         assert!(split("-- Start with a comment;SELECT * FROM foo;").is_empty());
         assert_eq!(
