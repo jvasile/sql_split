@@ -211,6 +211,15 @@ pub fn count(sql: &str) -> usize {
 }
 
 /// Return true iff SQL contains multiple sql statements
+///
+/// ```rust
+/// use sql_split::is_multiple;
+///
+/// assert!(!is_multiple("CREATE Table foo (bar text)"));
+/// assert!(is_multiple("CREATE Table foo (bar text);INSERT blah blah blah"));
+/// assert!(!is_multiple("-- line comment\nCREATE Table foo (bar text)"));
+///
+/// ```
 pub fn is_multiple(sql: &str) -> bool{
     split_n(sql, Some(2)).len() > 1
 }
@@ -416,10 +425,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_is_multiple() {
-	assert!(!is_multiple("CREATE Table foo (bar text)"));
-	assert!(is_multiple("CREATE Table foo (bar text);INSERT blah blah blah"));
-	assert!(!is_multiple("-- line comment\nCREATE Table foo (bar text)"));
-    }
 }
