@@ -288,11 +288,27 @@ mod tests {
         assert_eq!(
             split("SELECT * FROM foo; -- trailing ; comments ; are ; fine"),
             vec!["SELECT * FROM foo;"],
-            "Fail trailing -- comment w/ semicolon"
+            "trailing -- comment w/ multiple semicolons"
+        );
+        assert_eq!(
+            split("SELECT * FROM foo /* trailing comments are fine */"),
+            vec!["SELECT * FROM foo"],
+            "trailing block comment, no semicolon"
         );
         assert_eq!(
             split("SELECT * FROM foo; /* trailing comments are fine */"),
-            vec!["SELECT * FROM foo;"]
+            vec!["SELECT * FROM foo;"],
+            "trailing block comment"
+        );
+        assert_eq!(
+            split("CREATE TABLE foo (\nbar text -- describe bar\nbaz int -- how many baz\n);"),
+            vec!["CREATE TABLE foo (\nbar text baz int );"],
+            "multiline statement with --comments interspersed"
+        );
+        assert_eq!(
+            split("SELECT * FROM foo /* block comment mid-statement */ WHERE blah blah blah"),
+            vec!["SELECT * FROM foo  WHERE blah blah blah"],
+            "block comment mid-statement"
         );
         assert_eq!(
             split("SELECT * FROM foo /* multiline\n\ncomments are fine mid-statement */ WHERE blah blah blah"),
