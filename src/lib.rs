@@ -27,6 +27,8 @@ use std::cmp::min;
 
 /// Split a string into individual sql statements.
 ///
+/// SQL is an &str containing some sql statements separated by semicolons.
+///
 /// This func returns a Vec<String> containing individual sql
 /// statements in SQL.
 ///
@@ -79,8 +81,10 @@ pub fn split(sql: &str) -> Vec<String> {
 
 /// Split first N statements from a multi-statement sql string into a Vec<String>
 ///
-/// SQL is an &str containing some sql statements
+/// SQL is an &str containing some sql statements separated by semicolons.
+///
 /// N is an Option<usize>.  If present, return up to N statements.
+///
 /// ```rust
 /// use sql_split::split_n;
 /// use rusqlite::{Connection, Result};
@@ -203,7 +207,11 @@ pub fn split_n(sql: &str, n: Option<usize>) -> Vec<String> {
 
 /// Count statements in a string of sqlite sql
 ///
-/// This func returns the number of sql statements in an &str.
+/// SQL is an &str containing some sql statements separated by semicolons.
+///
+/// This func returns the number of sql statements in an &str.  It
+/// does some extremely basic parsing of SQL to determine the answer,
+/// and calling it will take O(n) time, where n is the length of SQL.
 ///
 /// ```rust
 /// use sql_split::count;
@@ -217,6 +225,8 @@ pub fn count(sql: &str) -> usize {
 }
 
 /// Return true iff SQL contains multiple sql statements
+///
+/// SQL is an &str containing some sql statements separated by semicolons.
 ///
 /// ```rust
 /// use sql_split::is_multiple;
