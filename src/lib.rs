@@ -17,6 +17,7 @@
 //! }
 //! ```
 #![warn(missing_docs)]
+use std::cmp::min;
 
 /// Split a string into individual sql statements.
 ///
@@ -189,7 +190,7 @@ pub fn split_n(sql: &str, n: Option<usize>) -> Vec<String> {
     }
 
     match n {
-        Some(n) => ret[0..n].to_vec(),
+        Some(n) => ret[0..min(n, ret.len())].to_vec(),
         None => ret,
     }
 }
@@ -207,6 +208,11 @@ pub fn split_n(sql: &str, n: Option<usize>) -> Vec<String> {
 /// ```
 pub fn count(sql: &str) -> usize {
     split(sql).len()
+}
+
+/// Return true iff SQL contains multiple sql statements
+pub fn is_multiple(sql: &str) -> bool{
+    split_n(sql, Some(2)).len() > 1
 }
 
 #[cfg(test)]
@@ -408,5 +414,12 @@ mod tests {
             1,
             "Failed at /*comment*/"
         );
+    }
+
+    #[test]
+    fn test_is_multiple() {
+	assert!(!is_multiple("CREATE Table foo (bar text)"));
+	assert!(is_multiple("CREATE Table foo (bar text);INSERT blah blah blah"));
+	assert!(!is_multiple("-- line comment\nCREATE Table foo (bar text)"));
     }
 }
