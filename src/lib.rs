@@ -101,11 +101,20 @@ pub fn split_n(sql: &str, n: Option<usize>) -> Vec<String> {
     let mut in_line_comment: bool = false;
     let mut in_block_comment: bool = false;
     let mut in_dot_command: bool = false;
+    let mut in_paren: bool = false;
     let mut record_statement: bool = false;
     for ch in sql.chars() {
         if !in_line_comment && !in_block_comment {
             statement.push(ch);
         }
+
+	// if we're in a comment, we need to ignore some noise, so
+	// let's treat it as a special case.
+	if in_line_comment && ch == '\n' {
+            statement.push(ch);
+            in_line_comment = false;
+        }
+
         match encloser {
             Some(e) => {
                 if ch == ']' || e == ch {
@@ -149,9 +158,6 @@ pub fn split_n(sql: &str, n: Option<usize>) -> Vec<String> {
                         record_statement = true;
                         in_dot_command = false;
                     }
-                    if in_line_comment {
-                        in_line_comment = false;
-                    }
                 }
                 '-' => {
                     if !in_line_comment && !in_block_comment {
@@ -165,10 +171,12 @@ pub fn split_n(sql: &str, n: Option<usize>) -> Vec<String> {
                     }
                 }
                 ';' => {
-                    if !in_line_comment && !in_block_comment {
+		    if !in_paren && !in_line_comment && !in_block_comment {
                         record_statement = true;
                     }
                 }
+		'(' => in_paren = true,
+		')' => in_paren = false,
                 '[' | '"' | '\'' | '`' => encloser = Some(ch),
                 _ => {}
             },
@@ -334,7 +342,7 @@ mod tests {
         );
         assert_eq!(
             split("CREATE TABLE foo (\nbar text -- describe bar\nbaz int -- how many baz\n);"),
-            vec!["CREATE TABLE foo (\nbar text baz int );"],
+            vec!["CREATE TABLE foo (\nbar text \nbaz int \n);"],
             "multiline statement with --comments interspersed"
         );
         assert_eq!(
@@ -397,6 +405,19 @@ mod tests {
             vec!["trailing newlines;"]
         );
     }
+
+    #[test]
+    fn test_split_virtual_table () {
+	assert_eq!(
+	    split("CREATE VIRTUAL TABLE my_csv USING csv(filename=..., delimiter=;);"),
+	    vec!["CREATE VIRTUAL TABLE my_csv USING csv(filename=..., delimiter=;);"],
+	    "virtual table");
+        assert_eq!(
+	    split("CREATE VIRTUAL TABLE foo USING csv(filename=..., -- comment about files\ndelimeter=;)"),
+            vec!["CREATE VIRTUAL TABLE foo USING csv(filename=..., \ndelimeter=;)"],
+            "multiline virt table with --comments interspersed"
+        );
+}
 
     #[test]
     fn test_split_n() {
