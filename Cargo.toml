@@ -1,7 +1,9 @@
 [package]
 name = "sql_split"
 authors = ["James Vasile"]
-description = "Split a string wtih multiple sql statements into separate strings"
+description = "Split a string wtih multiple sqlite sql statements into separate strings"
+documentation = "https://github.com/jvasile/sql_split"
+homepage = "https://github.com/jvasile/sql_split"
 repository = "https://github.com/jvasile/sql_split"
 version = "0.1.0"
 edition = "2021"
