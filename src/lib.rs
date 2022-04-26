@@ -42,6 +42,13 @@
 /// strip comments because doing so simplifies parsing and also it is
 /// sometimes hard to know which statement a comment should attach to.
 ///
+/// Because we strip comments, there is one known case where
+/// sql_split's behavior differs from sqlite's.  If you start a
+/// .command and then start a multi-line block comment before you
+/// terminate the .command with a newline, sqlite will throw an error.
+/// We just remove that error and give you the .command as its own
+/// statement.
+///
 /// ```rust
 /// use sql_split::split;
 /// use rusqlite::{Connection, Result};
@@ -81,6 +88,8 @@ pub fn split_n(sql: &str, n: Option<usize>) -> Vec<String> {
     let mut last_ch = ' ';
     let mut in_line_comment: bool = false;
     let mut in_block_comment: bool = false;
+    let mut in_dot_command: bool = false;
+    let mut record_statement: bool = false;
     for ch in sql.chars() {
         if !in_line_comment && !in_block_comment {
             statement.push(ch);
@@ -92,6 +101,11 @@ pub fn split_n(sql: &str, n: Option<usize>) -> Vec<String> {
                 }
             }
             None => match ch {
+                '.' => {
+                    if statement.len() == 1 && !in_block_comment {
+                        in_dot_command = true;
+                    }
+                }
                 '*' => {
                     if !in_line_comment && !in_block_comment {
                         if last_ch == '/' {
@@ -99,6 +113,17 @@ pub fn split_n(sql: &str, n: Option<usize>) -> Vec<String> {
                             // unpush the /*
                             statement.pop().unwrap();
                             statement.pop().unwrap();
+
+                            // This one might be controversial.  If
+                            // you start a /*comment*/ while in a
+                            // .command, sqlite will throw an error.
+                            // We are stripping comments, though, so
+                            // we can't really reproduce that.  Here,
+                            // I just end the .command and delete the
+                            // comment.
+                            if in_dot_command {
+                                record_statement = true;
+                            }
                         }
                     }
                 }
@@ -108,6 +133,10 @@ pub fn split_n(sql: &str, n: Option<usize>) -> Vec<String> {
                     }
                 }
                 '\n' => {
+                    if in_dot_command {
+                        record_statement = true;
+                        in_dot_command = false;
+                    }
                     if in_line_comment {
                         in_line_comment = false;
                     }
@@ -125,18 +154,7 @@ pub fn split_n(sql: &str, n: Option<usize>) -> Vec<String> {
                 }
                 ';' => {
                     if !in_line_comment && !in_block_comment {
-                        statement = statement.trim().to_owned();
-
-                        // Push statement if not empty
-                        if statement != ";" {
-                            ret.push(statement.to_owned());
-                            if let Some(n) = n {
-                                if ret.len() >= n {
-                                    break;
-                                }
-                            }
-                        }
-                        statement = "".to_owned();
+                        record_statement = true;
                     }
                 }
                 '[' | '"' | '\'' | '`' => encloser = Some(ch),
@@ -144,6 +162,22 @@ pub fn split_n(sql: &str, n: Option<usize>) -> Vec<String> {
             },
         }
         last_ch = ch;
+
+        if record_statement {
+            statement = statement.trim().to_owned();
+
+            // Push statement if not empty
+            if statement != ";" && !statement.is_empty() {
+                ret.push(statement.to_owned());
+                if let Some(n) = n {
+                    if ret.len() >= n {
+                        break;
+                    }
+                }
+            }
+            statement = "".to_owned();
+            record_statement = false;
+        }
     }
 
     // Capture anything left over, in case sql doesn't end in
@@ -269,6 +303,36 @@ mod tests {
             split("-- Start with a comment\nSELECT * FROM foo;"),
             vec!["SELECT * FROM foo;"],
             "-- comment didn't know where to stop"
+        );
+    }
+
+    #[test]
+    fn split_dot_commant() {
+        assert_eq!(split(".dump"), vec![".dump"], "Failed at basic dot command");
+        assert_eq!(
+            split(".dump --with a comment"),
+            vec![".dump"],
+            "Failed at dot command w/ --comment"
+        );
+        assert_eq!(
+            split(".dump\nDROP TABLE foo"),
+            vec![".dump", "DROP TABLE foo"],
+            ".dump + statement"
+        );
+        assert_eq!(
+            split("SELECT * FROM foo;.dump\nDROP TABLE foo"),
+            vec!["SELECT * FROM foo;", ".dump", "DROP TABLE foo"],
+            "statement + .dump + statement"
+        );
+        assert_eq!(
+            split(".dump /* block comment */ DROP TABLE foo"),
+            vec![".dump", "DROP TABLE foo"],
+            ".dump + /*block comment*/ + statement"
+        );
+        assert_eq!(
+            split(".dump /* multiline \n comment */ DROP TABLE foo"),
+            vec![".dump", "DROP TABLE foo"],
+            ".dump + /*multiline comment*/ + statement"
         );
     }
 
