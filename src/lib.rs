@@ -83,7 +83,8 @@ pub fn split(sql: &str) -> Vec<String> {
 ///
 /// SQL is an &str containing some sql statements separated by semicolons.
 ///
-/// N is an Option<usize>.  If present, return up to N statements.
+/// N is an Option<usize>.  If None, returns all statements, otherwise
+/// up to N statements.
 ///
 /// ```rust
 /// use sql_split::split_n;
