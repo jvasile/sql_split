@@ -220,7 +220,7 @@ pub fn count(sql: &str) -> usize {
 /// assert!(!is_multiple("-- line comment\nCREATE Table foo (bar text)"));
 ///
 /// ```
-pub fn is_multiple(sql: &str) -> bool{
+pub fn is_multiple(sql: &str) -> bool {
     split_n(sql, Some(2)).len() > 1
 }
 
@@ -424,5 +424,4 @@ mod tests {
             "Failed at /*comment*/"
         );
     }
-
 }
